@@ -1,11 +1,11 @@
 from datetime import date, time, datetime, timedelta
 
-from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.working_hours import WorkingHours
 from app.models.appointment import Appointment
+
 
 def generate_slots(day: date, start_time: time, end_time: time):
     slots = []
@@ -18,7 +18,8 @@ def generate_slots(day: date, start_time: time, end_time: time):
         current += timedelta(minutes=30)
 
     return slots
-    
+
+
 def generate_daily_slots(day: date, working_hours):
     all_slots = []
 
@@ -32,10 +33,6 @@ def generate_daily_slots(day: date, working_hours):
         all_slots.extend(slots)
 
     return all_slots
-    
-    
-    
-
 
 
 def get_working_hours(
@@ -78,3 +75,42 @@ def get_active_appointments(
     appointments = result.scalars().all()
 
     return appointments
+
+
+def get_available_slots(
+    db: Session,
+    doctor_id: int,
+    day: date
+):
+    working_hours = get_working_hours(
+        db,
+        doctor_id,
+        day
+    )
+
+    all_slots = generate_daily_slots(
+        day,
+        working_hours
+    )
+
+    appointments = get_active_appointments(
+        db,
+        doctor_id,
+        day
+    )
+
+    booked_slots = {
+        appointment.slot_start_time
+        for appointment in appointments
+    }
+
+    min_booking_time = datetime.now() + timedelta(hours = 1)
+
+    available_slots = [
+        slot
+        for slot in all_slots
+        if slot not in booked_slots
+        and slot >= min_booking_time
+    ]
+
+    return available_slots
