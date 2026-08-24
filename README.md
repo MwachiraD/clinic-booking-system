@@ -162,6 +162,16 @@ appointment returns an error.
   future version could add a `DoctorAvailabilityException` model to
   override the regular schedule for specific dates without changing this
   design's core structure.
+- **Patient records are assumed to already exist before a booking is
+  made**, rather than being created inline as part of `POST /appointments`.
+  The required endpoint list does not include patient registration, and
+  `POST /appointments` takes an existing `patient_id` rather than raw
+  patient details. In a fuller system, patients would likely be created
+  through a separate registration flow (e.g. at reception, or a dedicated
+  endpoint outside this assessment's scope). Doctors and their working
+  hours are seeded directly rather than created through the API for the
+  same reason: the required endpoints don't call for a doctor-creation
+  flow, and the clinic's 5 doctors are a fixed, known set.
 - **The 1-hour-minimum-notice rule is treated as the bonus requirement it
   is**, implemented after the core booking flow is working, not before.
 
@@ -176,4 +186,4 @@ appointment returns an error.
   per-day schedules straightforward to extend later.
 - Enforcing the no-double-booking rule at the database level instead of
   only in application code costs a small amount of upfront schema design,
-  but is the only way to guarantee correctness under concurrent requests
+  but is the only way to guarantee correctness under concurrent requests.
