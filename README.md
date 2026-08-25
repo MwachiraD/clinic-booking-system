@@ -264,7 +264,7 @@ pytest -v
 
 Current test result:
 ```
-13 passed
+15 passed
 ```
 
 The tests cover scenarios including:
@@ -438,9 +438,24 @@ script just to silence the error.
 
 ## Known Limitations
 
-- Timezone handling could be made more explicit and consistently use
-  Africa/Nairobi with `zoneinfo`.
-- Doctor leave/exceptions are outside the assessment scope.
-- Patient registration is outside the assessment scope.
-- Render free-tier services may spin down after inactivity, so the first
-  request after inactivity may take longer.
+* **Timezone display:** The API returns availability slot times in UTC. A frontend or API client is responsible for converting these times to the user's local timezone for display.
+
+* **Database concurrency:** The application checks slot availability before creating an appointment. For a high-concurrency production system, a stronger database-level constraint or transaction/locking strategy would be required to guarantee that two simultaneous requests cannot book the same slot.
+
+* **Authentication and authorization:** The current API does not implement a full authentication and authorization system. In a production deployment, patients, doctors, and administrators would require authenticated access with role-based permissions.
+
+* **Notifications:** The system does not currently send email or SMS notifications for bookings, cancellations, or rescheduling.
+
+* **Recurring working hours:** Working hours are stored per day rather than through a dedicated recurring schedule management system. Changes to a doctor's regular schedule would therefore require updating the relevant records.
+
+* **Availability response format:** Availability currently returns `time` values rather than full timezone-aware datetime values. Clients must know that these values represent UTC.
+
+* **Production database:** The automated test suite uses an isolated test database. Production deployments should use PostgreSQL with appropriate backups, monitoring, and connection management.
+
+* **Observability:** The application has limited structured logging, metrics, and monitoring. A production system would benefit from centralized logging, health monitoring, and alerting.
+
+* **Doctor leave/exceptions:** Doctor leave and schedule exceptions are outside the assessment scope.
+
+* **Patient registration:** Patient registration and account management are outside the assessment scope.
+
+* **Render free tier:** Render free-tier services may spin down after periods of inactivity, so the first request after inactivity may take longer than subsequent requests.
