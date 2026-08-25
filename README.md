@@ -1,191 +1,435 @@
 # Clinic Booking System
 
+FastAPI backend for a clinic appointment booking system. Patients can view
+available 30-minute slots, book, cancel, and reschedule appointments across
+5 doctors.
+
 ## Section 1: System Design
-
-### The problem
-
-A small clinic with 5 doctors needs an online booking system. Each doctor has
-set working hours and works in 30-minute slots. Patients need to see which
-slots are free for a doctor on a given day, book one, and cancel if needed.
-Once a slot is booked, it must not be available to anyone else. The system
-should be built to scale beyond the initial 5 doctors.
 
 ### Models
 
-**Doctor**
-- id
-- name
-- (other basic profile fields as needed)
+**Doctor** — id, name
 
-**WorkingHours**
-- id
-- doctor_id (FK to Doctor)
-- day_of_week
-- start_time
-- end_time
+**WorkingHours** — id, doctor_id (FK), day_of_week, start_time, end_time
 
-A doctor can have more than one WorkingHours row for the same day. This is
-how a lunch break is represented, for example Monday 08:00-13:00 and Monday
-14:00-17:00 as two separate rows, rather than inventing a separate
-"lunch break" concept. It also means a doctor's schedule can differ by day
-without any special-casing.
+A doctor can have multiple rows for the same day (e.g. Monday 08:00-13:00
+and 14:00-17:00), which represents a lunch break without any special-case
+logic.
 
-**Patient**
-- id
-- name
-- contact details (phone/email)
+**Patient** — id, name, email, phone_number
 
-Patient is a separate model rather than just fields on the appointment. The
-brief says the clinic wants to grow, and a standalone Patient model is what
-lets the bonus endpoint (a patient's upcoming appointments) exist at all,
-and avoids duplicating a patient's details across every booking they make.
+Kept separate from Appointment to avoid duplicating patient details across
+bookings.
 
-**Appointment**
-- id
-- doctor_id (FK to Doctor)
-- patient_id (FK to Patient)
-- slot_start_time
-- status (confirmed / cancelled)
-- cancellation_reason (nullable)
+**Appointment** — id, doctor_id (FK), patient_id (FK), slot_start_time,
+status (confirmed/cancelled), cancellation_reason (nullable)
 
 Only `slot_start_time` is stored, not an end time. Every appointment is a
-fixed 30-minute slot, so the end time is always `slot_start_time + 30
-minutes` and can be derived rather than stored. Storing both would allow
-inconsistent data (an end time that doesn't actually match a 30-minute
-appointment), for no real benefit.
+fixed 30 minutes, so storing both risks inconsistent data for no benefit.
 
-### Why there is no Slot table
+### Why there's no Slot table
 
-Slots are not stored. They are generated on request from a doctor's
-WorkingHours for the requested day, split into 30-minute increments. A
-slot is only ever a concept the API computes on the fly, not a row that
-exists ahead of time. Storing every possible slot for every doctor for
-every future day does not scale well and adds no real value, since the
-slots are entirely predictable from the working hours.
+Slots are generated on request from a doctor's WorkingHours rather than
+stored.
 
-### Availability algorithm
+For a given doctor and date, the system:
 
-Given a doctor and a date:
+1. Looks up the doctor's working periods.
+2. Generates 30-minute slots.
+3. Removes slots occupied by confirmed appointments.
+4. Removes slots that are in the past or within one hour of the current time.
+5. Returns the remaining slots.
 
-1. Look up that doctor's WorkingHours rows for the day of the week.
-2. Generate 30-minute slots within each working period (each row handles
-   itself, so lunch breaks are automatically excluded since no working
-   period covers them).
-3. Remove any slot whose start time matches an existing **confirmed**
-   appointment for that doctor.
-4. Remove any slot that starts in the past.
-5. (Bonus) Remove any slot starting less than 1 hour from the current time.
-6. Return what is left as the available slots.
+Storing every possible slot for every doctor for every future day would
+create unnecessary data and could become stale whenever working hours change.
 
-### Preventing double-booking (the race condition)
+### Preventing double-booking
 
-Checking availability in application code first and then creating the
-appointment is not enough on its own. Two requests can both pass the
-"is this slot free" check before either one finishes creating the
-appointment, which would double-book the doctor.
+Checking whether a slot is free and then creating the appointment is not
+atomic. Two requests could both pass the availability check before either
+request creates the appointment.
 
-To make this impossible rather than just unlikely, the database enforces
-it directly: a partial unique constraint on `(doctor_id, slot_start_time)`,
-scoped to rows where `status = 'confirmed'`. This means the database will
-physically refuse to let two confirmed appointments exist for the same
-doctor at the same time, no matter what the application code does.
-Cancelled appointments are excluded from the constraint so a cancelled
-slot can be rebooked. The exact mechanics of implementing this constraint
-depend on the database and ORM chosen, and are worked out concretely in
-Section 2 rather than assumed here.
+The system therefore uses a PostgreSQL partial unique index on:
 
-When two booking requests race for the same slot, whichever insert reaches
-the database first succeeds. The second insert fails with a database
-integrity error. The API catches that error and returns a `409 Conflict`
-with a clear message ("This slot is no longer available") instead of
-letting the raw database error surface as a 500.
+`(doctor_id, slot_start_time) WHERE status = 'confirmed'`
 
-### Booking must re-validate, not trust, the requested time
+This makes double-booking impossible at the database level. If two requests
+race for the same slot, the database rejects the second confirmed
+appointment and the API returns `409 Conflict`.
 
-A patient's booking request is independently validated against the same
-rules used to generate availability: it must align to one of the
-doctor's actual 30-minute slot boundaries (a request for 10:15 is
-rejected even though 10:00-10:30 and 10:30-11:00 are valid), it must
-fall within working hours, it must not be in the past, and it must not
-already be taken. Availability data shown to a patient can go stale
-between the time they view it and the time they submit a booking (another
-patient may book the same slot in between), so the booking endpoint never
-trusts that a slot is free just because it was listed as available a
-moment earlier. The database's unique constraint is the final guarantee
-if two requests still race past this validation.
+The booking endpoint also independently validates every request rather than
+trusting availability data that may have become outdated.
 
-### Cancel
+### Cancel and Reschedule
 
-Cancelling sets the appointment's status to cancelled and records a reason.
-Because availability is computed by excluding only confirmed appointments,
-the slot becomes bookable again automatically, no separate "release" step
-is needed. Cancelling an appointment that is already cancelled returns an
-error rather than silently succeeding.
+Cancelling changes the appointment status to `cancelled` and stores the
+cancellation reason.
+
+Because availability only excludes confirmed appointments, the cancelled
+appointment's slot automatically becomes available again.
+
+Cancelling an already-cancelled appointment returns `400 Bad Request`.
+
+Rescheduling validates the new slot using the same rules as a new booking.
+The original appointment is only changed after the new slot has been
+validated successfully.
+
+If the new slot is already occupied, the API returns `409 Conflict`.
 
 ### Timezone
 
-The clinic operates in a single location, so all appointment times are
-interpreted in the `Africa/Nairobi` timezone, not the server's local time.
-This matters because most cloud platforms run servers on UTC by default.
-If timestamps aren't explicitly handled as Africa/Nairobi, a patient
-booking "9:00 AM" could be stored or compared as 9:00 UTC, which is
-actually noon in Nairobi. This kind of bug would not show up in local
-testing on a machine already set to East Africa Time, only after
-deployment, so it's called out here as an explicit assumption rather than
-left implicit.
+The clinic operates in Africa/Nairobi.
 
-### Reschedule
+Appointment timestamps are stored as timezone-aware database values. The
+current implementation still has some timezone handling that could be made
+more explicit in a production system by consistently using `zoneinfo` and
+the Africa/Nairobi timezone.
 
-Reschedule is not two independent actions (cancel old, book new). It is
-handled as a single atomic transaction:
+### Scope decisions
 
-1. Validate the new slot exactly as a fresh booking would be validated
-   (working hours, not in the past, not already taken).
-2. If valid, release the old slot and book the new one within the same
-   transaction.
-3. If the new slot is invalid or gets taken by someone else in the
-   meantime, the whole operation rolls back and the original appointment
-   is left untouched.
+- **Doctor leave/exceptions:** out of scope. WorkingHours represents a
+  standing weekly schedule. A `DoctorAvailabilityException` model could be
+  added later.
+- **Patient registration:** out of scope. `POST /appointments` expects an
+  existing `patient_id`.
+- **Doctor and working-hour management:** out of scope for this assessment.
+  Seed data is used for the initial clinic configuration.
+- **1-hour minimum booking notice:** implemented as the bonus requirement.
 
-Doing this as two separate steps would risk a patient ending up with
-no appointment at all if the server failed between releasing the old slot
-and booking the new one. Attempting to reschedule an already-cancelled
-appointment returns an error.
+---
 
-### Scope decisions and assumptions
+## Section 2: API Implementation
 
-- **Doctor leave / exceptions to regular working hours are out of scope.**
-  The initial implementation assumes the configured WorkingHours represent
-  a doctor's standing weekly schedule. Ad hoc changes (a doctor taking a
-  specific day off) are not handled in this version. This is a deliberate
-  scoping decision for a 3-5 day assessment rather than an oversight. A
-  future version could add a `DoctorAvailabilityException` model to
-  override the regular schedule for specific dates without changing this
-  design's core structure.
-- **Patient records are assumed to already exist before a booking is
-  made**, rather than being created inline as part of `POST /appointments`.
-  The required endpoint list does not include patient registration, and
-  `POST /appointments` takes an existing `patient_id` rather than raw
-  patient details. In a fuller system, patients would likely be created
-  through a separate registration flow (e.g. at reception, or a dedicated
-  endpoint outside this assessment's scope). Doctors and their working
-  hours are seeded directly rather than created through the API for the
-  same reason: the required endpoints don't call for a doctor-creation
-  flow, and the clinic's 5 doctors are a fixed, known set.
-- **The 1-hour-minimum-notice rule is treated as the bonus requirement it
-  is**, implemented after the core booking flow is working, not before.
+### Structure
 
-### Trade-offs considered
+```text
+app/
+  models/       SQLAlchemy models
+  schemas/      Pydantic request/response schemas
+  services/     Business logic
+  routes/       API route handlers
+  database.py   Database engine, sessions and Base
+  config.py     Environment settings
+  main.py       FastAPI application
 
-- Dynamically generating slots instead of storing them avoids a table that
-  grows indefinitely and would need constant regeneration whenever working
-  hours change, at the cost of a small amount of computation on every
-  availability request. For a clinic of this size this is a clear win.
-- A separate WorkingHours model instead of fields on Doctor costs one extra
-  join, but avoids awkward representations of multi-period days and makes
-  per-day schedules straightforward to extend later.
-- Enforcing the no-double-booking rule at the database level instead of
-  only in application code costs a small amount of upfront schema design,
-  but is the only way to guarantee correctness under concurrent requests.
+alembic/        Database migrations
+scripts/        Database seed scripts
+tests/          Automated API tests
+```
 
-  testing something imp
+### Technology Stack
+
+- Python 3.14
+- FastAPI
+- SQLAlchemy 2.0
+- Alembic
+- Pydantic V2
+- PostgreSQL
+- Docker
+- Pytest
+- GitHub Actions
+- Render
+
+PostgreSQL is the database used by the application in development and
+production. SQLite is used only as an isolated test database for
+automated tests, so running the test suite never touches the development
+or deployed PostgreSQL data.
+
+### Endpoints
+
+**Book an appointment**
+
+`POST /appointments`
+
+Validates:
+- Doctor exists
+- Patient exists
+- Slot is within working hours
+- Slot is aligned to a 30-minute boundary
+- Slot is not in the past
+- Slot is at least one hour in the future
+- Slot is not already booked
+
+Returns `409 Conflict` if the slot is already booked.
+
+**Check doctor availability**
+
+`GET /doctors/{id}/availability?day=YYYY-MM-DD`
+
+Returns available 30-minute slots for the specified doctor and date.
+
+**Cancel an appointment**
+
+`PATCH /appointments/{id}/cancel`
+
+Request body:
+```json
+{
+  "cancellation_reason": "Patient requested cancellation"
+}
+```
+
+Returns `400 Bad Request` if the appointment has already been cancelled.
+
+**Reschedule an appointment**
+
+`PATCH /appointments/{id}/reschedule`
+
+Request body:
+```json
+{
+  "slot_start_time": "2026-08-26T15:00:00Z"
+}
+```
+
+The new slot is validated using the same rules as a fresh booking.
+
+Returns `400 Bad Request` if the appointment is cancelled and
+`409 Conflict` if the new slot is already occupied.
+
+**Get patient appointments**
+
+`GET /patients/{id}/appointments`
+
+Returns the patient's upcoming appointments sorted by appointment time.
+This endpoint was implemented as the assessment bonus requirement.
+
+### Running Locally
+
+**Requirements**
+- Python 3.14+
+- PostgreSQL
+- Git
+
+Clone the repository:
+```bash
+git clone https://github.com/MwachiraD/clinic-booking-system.git
+cd clinic-booking-system
+```
+
+Create and activate a virtual environment:
+```bash
+python -m venv .venv
+```
+Windows:
+```bash
+.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+Create a `.env` file:
+```
+DATABASE_URL=<your PostgreSQL connection string>
+```
+
+Run database migrations:
+```bash
+alembic upgrade head
+```
+
+Seed the database:
+```bash
+python scripts/seed.py
+```
+
+Start the API:
+```bash
+uvicorn app.main:app --reload
+```
+
+The API will be available at `http://127.0.0.1:8000`.
+Interactive Swagger documentation: `http://127.0.0.1:8000/docs`.
+
+### Automated Tests
+
+The automated tests use a separate SQLite database so that running the test
+suite does not modify the development or deployed PostgreSQL database.
+
+Run:
+```bash
+pytest -v
+```
+
+Current test result:
+```
+13 passed
+```
+
+The tests cover scenarios including:
+- Successful booking
+- Doctor not found
+- Patient not found
+- Booking outside working hours
+- Booking within one hour
+- Double booking
+- Cancellation
+- Cancelling an already-cancelled appointment
+- Rescheduling
+- Rescheduling a cancelled appointment
+- Other booking validation rules
+
+The tests use a separate test database/session so that test execution does
+not depend on manually created production appointments.
+
+### Docker
+
+The application includes a Dockerfile for containerized deployment.
+
+Build the image:
+```bash
+docker build -t clinic-booking-api .
+```
+
+Run the container:
+```bash
+docker run --env-file .env -p 8000:8000 clinic-booking-api
+```
+
+The application listens on port 8000 inside the container.
+
+---
+
+## Section 3: Deployment & CI/CD
+
+### Deployment
+
+The API is deployed on Render using the project's Dockerfile.
+
+Public API: https://clinic-booking-system-dvd4.onrender.com
+
+Interactive Swagger documentation: https://clinic-booking-system-dvd4.onrender.com/docs
+
+The root `/` endpoint is not defined because this is an API-only
+application. Use `/docs` to interact with the API.
+
+The application uses the PostgreSQL database hosted on Render through the
+`DATABASE_URL` environment variable.
+
+**Deployment configuration**
+- Platform: Render
+- Runtime: Docker
+- Deployment branch: `main`
+- Database: PostgreSQL
+- Port: Render provides the `PORT` environment variable; the container
+  listens on port 8000.
+
+Render automatically deploys changes pushed to the configured deployment
+branch.
+
+### CI/CD
+
+A GitHub Actions workflow was added to run the automated test suite on
+pull requests.
+
+The intended workflow:
+```
+Pull Request
+     |
+     v
+GitHub Actions
+     |
+     v
+Run pytest
+     |
+     v
+Tests pass
+     |
+     v
+Merge into main
+     |
+     v
+Render automatically deploys
+```
+
+The GitHub Actions workflow was implemented, but GitHub currently prevents
+the workflow from running because the account is locked due to a billing
+issue. The test suite itself passes locally with 13 tests passing.
+
+Render deployment is working successfully from the `main` branch.
+
+---
+
+## Section 4: AI Reflection
+
+AI tools were used throughout the assessment as a development and learning
+aid. I remained responsible for reviewing suggestions, integrating the
+code, running the application, testing the API behaviour, debugging
+errors, and making the final implementation decisions.
+
+**1. What did you use AI for across the four sections?**
+
+AI was used for:
+
+- Discussing and refining the system design and database models.
+- Explaining FastAPI, SQLAlchemy and dependency injection concepts.
+- Identifying validation rules and potential edge cases.
+- Reviewing implementation approaches for booking, cancellation and
+  rescheduling.
+- Providing examples and initial structure for some implementation code.
+- Providing an initial structure for the automated test suite.
+- Troubleshooting API errors using stack traces and observed behaviour.
+- Explaining Docker and GitHub Actions concepts while setting up deployment.
+- Reviewing the README and deployment configuration.
+
+Some implementation code, including parts of the planned automated test
+suite, was adapted from AI-generated suggestions. I reviewed and
+integrated this code rather than treating the generated output as
+automatically correct.
+
+**2. One example where an AI suggestion improved your work**
+
+One useful example was the database-level prevention of double-booking.
+
+The initial approach could check whether a slot was available before
+creating an appointment. AI pointed out that this check alone was not
+atomic because two simultaneous requests could both see the slot as
+available.
+
+I therefore implemented a PostgreSQL partial unique index on the doctor,
+slot and confirmed status. This moves the most important concurrency
+guarantee into the database rather than relying only on application-level
+checks.
+
+**3. One example where AI output was wrong or incomplete**
+
+During automated testing, the initial test implementation for the
+reschedule endpoint used the wrong request field name.
+
+The API expected `slot_start_time`, while the test initially sent
+`new_slot_start_time`. This caused FastAPI to return `422 Unprocessable
+Entity` rather than the expected business response.
+
+I identified this by running the test suite, inspecting the actual API
+route and schema, and correcting the test to match the application's
+actual request contract.
+
+This reinforced the importance of running and verifying AI-generated code
+rather than assuming that generated code is correct.
+
+**4. Two decisions I made without AI**
+
+- **Database choice:** I chose PostgreSQL because the system requires
+  relational data, foreign keys, transactions and database-level protection
+  against concurrent double-booking.
+- **No Slot table:** I decided to generate slots from working hours instead
+  of storing every possible slot. Since appointments are fixed at 30
+  minutes, the slot can be derived from the doctor's schedule, reducing
+  unnecessary stored data and avoiding stale slot records.
+
+---
+
+## Known Limitations
+
+- Timezone handling could be made more explicit and consistently use
+  Africa/Nairobi with `zoneinfo`.
+- Doctor leave/exceptions are outside the assessment scope.
+- Patient registration is outside the assessment scope.
+- GitHub Actions execution is currently blocked by an account billing
+  issue, although the workflow configuration is present and the tests pass
+  locally.
+- Render free-tier services may spin down after inactivity, so the first
+  request after inactivity may take longer.
