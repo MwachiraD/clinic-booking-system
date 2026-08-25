@@ -233,7 +233,7 @@ alembic upgrade head
 
 Seed the database:
 ```bash
-python scripts/seed.py
+python -m scripts.seed
 ```
 
 Start the API:
