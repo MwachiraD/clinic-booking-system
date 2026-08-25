@@ -76,14 +76,22 @@ validated successfully.
 
 If the new slot is already occupied, the API returns `409 Conflict`.
 
-### Timezone
+### Timezone Handling
 
-The clinic operates in Africa/Nairobi.
 
-Appointment timestamps are stored as timezone-aware database values. The
-current implementation still has some timezone handling that could be made
-more explicit in a production system by consistently using `zoneinfo` and
-the Africa/Nairobi timezone.
+The clinic operates in **Africa/Nairobi (UTC+3)**.
+
+All appointment timestamps are normalized and stored as **timezone-aware UTC values**.
+
+The clinic's working hours are defined in **Nairobi time** and converted to UTC when generating availability slots.
+
+For example:
+
+* 09:00 Nairobi → 06:00 UTC
+* 09:30 Nairobi → 06:30 UTC
+* 16:30 Nairobi → 13:30 UTC
+
+The availability endpoint currently returns slot times as UTC `time` values. Clients consuming the API should interpret these times as UTC and convert them to the user's local timezone for display.
 
 ### Scope decisions
 
