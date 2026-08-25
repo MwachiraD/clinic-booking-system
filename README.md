@@ -124,16 +124,16 @@ tests/          Automated API tests
 - SQLAlchemy 2.0
 - Alembic
 - Pydantic V2
-- PostgreSQL
+- PostgreSQL — application database
+- SQLite — isolated automated test database
 - Docker
 - Pytest
 - GitHub Actions
 - Render
 
-PostgreSQL is the database used by the application in development and
-production. SQLite is used only as an isolated test database for
-automated tests, so running the test suite never touches the development
-or deployed PostgreSQL data.
+PostgreSQL is used by the application, including the deployed
+production environment. SQLite is used only for the automated test suite
+so tests do not modify application data.
 
 ### Endpoints
 
@@ -289,19 +289,21 @@ Run the container:
 docker run --env-file .env -p 8000:8000 clinic-booking-api
 ```
 
-The application listens on port 8000 inside the container.
+The container uses the `PORT` environment variable for the Uvicorn
+listening port. Render supplies this value automatically. For local
+Docker testing, the `docker run` command above maps host port 8000 to
+the container, but the container itself will only listen on port 8000
+if `.env` sets `PORT=8000` — otherwise, map to whatever `PORT` is set to.
 
 ---
 
 ## Section 3: Deployment & CI/CD
 
-### Deployment
+The API is deployed as a Docker-based Render Web Service.
 
-The API is deployed on Render using the project's Dockerfile.
+**Public API:** https://clinic-booking-system-dvd4.onrender.com
 
-Public API: https://clinic-booking-system-dvd4.onrender.com
-
-Interactive Swagger documentation: https://clinic-booking-system-dvd4.onrender.com/docs
+**Interactive API documentation:** https://clinic-booking-system-dvd4.onrender.com/docs
 
 The root `/` endpoint is not defined because this is an API-only
 application. Use `/docs` to interact with the API.
@@ -309,47 +311,40 @@ application. Use `/docs` to interact with the API.
 The application uses the PostgreSQL database hosted on Render through the
 `DATABASE_URL` environment variable.
 
-**Deployment configuration**
+### Deployment
+
+The application is packaged using Docker with Python 3.14-slim. Render
+builds the Docker image and runs the FastAPI application with Uvicorn.
+
+The container listens on port `8000` locally; Render provides the runtime
+port through its environment.
+
 - Platform: Render
 - Runtime: Docker
 - Deployment branch: `main`
 - Database: PostgreSQL
-- Port: Render provides the `PORT` environment variable; the container
-  listens on port 8000.
 
-Render automatically deploys changes pushed to the configured deployment
-branch.
+Render is connected to the `main` branch and automatically deploys changes
+after they are merged.
 
 ### CI/CD
 
 A GitHub Actions workflow was added to run the automated test suite on
-pull requests.
+pull requests targeting `main`. The workflow:
 
-The intended workflow:
-```
-Pull Request
-     |
-     v
-GitHub Actions
-     |
-     v
-Run pytest
-     |
-     v
-Tests pass
-     |
-     v
-Merge into main
-     |
-     v
-Render automatically deploys
-```
+1. Checks out the repository.
+2. Sets up Python 3.14.
+3. Installs dependencies from `requirements.txt`.
+4. Runs the pytest test suite.
 
-The GitHub Actions workflow was implemented, but GitHub currently prevents
-the workflow from running because the account is locked due to a billing
-issue. The test suite itself passes locally with 13 tests passing.
+The CI environment uses SQLite for testing, while the deployed application
+uses PostgreSQL hosted on Render.
 
-Render deployment is working successfully from the `main` branch.
+The workflow configuration is in place and is running successfully:
+GitHub Actions executes on pull requests targeting `main`, runs the test
+suite against the SQLite test database, and the pull request was merged
+into `main` after CI passed. Render deployment from `main` is working
+correctly.
 
 ---
 
@@ -373,7 +368,7 @@ AI was used for:
 - Providing an initial structure for the automated test suite.
 - Troubleshooting API errors using stack traces and observed behaviour.
 - Explaining Docker and GitHub Actions concepts while setting up deployment.
-- Reviewing the README and deployment configuration.
+- Reviewing and structuring this README.
 
 Some implementation code, including parts of the planned automated test
 suite, was adapted from AI-generated suggestions. I reviewed and
@@ -410,6 +405,17 @@ actual request contract.
 This reinforced the importance of running and verifying AI-generated code
 rather than assuming that generated code is correct.
 
+A second example came from the seed script. It appeared correct on
+inspection but failed when run from a fresh clone with an SQLAlchemy
+error that `Appointment` could not be resolved for the `Doctor` model's
+relationship. I reproduced the failure, traced it to model registration
+(the `Appointment` class was never imported anywhere the seed script's
+import chain touched, so SQLAlchemy's mapper configuration couldn't
+resolve the string reference), and fixed it at the actual source — by
+populating `app/models/__init__.py` to import all four models — rather
+than adding an unused `Appointment` import directly into the seed
+script just to silence the error.
+
 **4. Two decisions I made without AI**
 
 - **Database choice:** I chose PostgreSQL because the system requires
@@ -428,8 +434,5 @@ rather than assuming that generated code is correct.
   Africa/Nairobi with `zoneinfo`.
 - Doctor leave/exceptions are outside the assessment scope.
 - Patient registration is outside the assessment scope.
-- GitHub Actions execution is currently blocked by an account billing
-  issue, although the workflow configuration is present and the tests pass
-  locally.
 - Render free-tier services may spin down after inactivity, so the first
   request after inactivity may take longer.
