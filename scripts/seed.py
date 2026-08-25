@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 
 from app.models.doctor import Doctor
-from app.models.patient import Patient
+from app.models.patient import Patient, WorkingHours
 from app.models.working_hours import WorkingHours
 
 
