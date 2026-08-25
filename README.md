@@ -187,3 +187,5 @@ appointment returns an error.
 - Enforcing the no-double-booking rule at the database level instead of
   only in application code costs a small amount of upfront schema design,
   but is the only way to guarantee correctness under concurrent requests.
+
+  testing something
