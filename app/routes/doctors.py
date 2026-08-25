@@ -1,4 +1,4 @@
-from datetime import date , datetime, time, timedelta
+from datetime import date , datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -27,7 +27,7 @@ def get_doctor_availability(
     active_appointments = get_active_appointments(db=db, doctor_id=doctor_id, day=day)
 
     booked_slots = {appointment.slot_start_time for appointment in active_appointments}
-    min_booking_time = datetime.now() + timedelta(hours=1)
+    min_booking_time = datetime.now(timezone.utc) + timedelta(hours=1)
     available_slots = [
         slot for slot in daily_slots if slot not in booked_slots and slot >= min_booking_time]
     available_times= [slot.time() for slot in available_slots]

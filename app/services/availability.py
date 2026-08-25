@@ -1,4 +1,4 @@
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,8 +10,8 @@ from app.models.appointment import Appointment
 def generate_slots(day: date, start_time: time, end_time: time):
     slots = []
 
-    current = datetime.combine(day, start_time)
-    end_datetime = datetime.combine(day, end_time)
+    current = datetime.combine(day, start_time, tzinfo=timezone.utc)
+    end_datetime = datetime.combine(day, end_time, tzinfo=timezone.utc)
 
     while current + timedelta(minutes=30) <= end_datetime:
         slots.append(current)
@@ -104,7 +104,7 @@ def get_available_slots(
         for appointment in appointments
     }
 
-    min_booking_time = datetime.now() + timedelta(hours = 1)
+    min_booking_time = datetime.now(timezone.utc) + timedelta(hours = 1)
 
     available_slots = [
         slot

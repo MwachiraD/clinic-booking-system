@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -20,6 +20,7 @@ def book_appointment(
     patient_id: int,
     slot_start_time: datetime,
 ):
+    slot_start_time = slot_start_time.replace(microsecond=0, tzinfo=timezone.utc)
     # 1. Check that the doctor exists
     query = select(Doctor).where(
         Doctor.id == doctor_id
@@ -49,7 +50,7 @@ def book_appointment(
         )
 
     # 3. Check the one-hour booking rule
-    min_booking_time = datetime.now() + timedelta(hours=1)
+    min_booking_time = datetime.now(timezone.utc) + timedelta(hours=1)
 
     if slot_start_time < min_booking_time:
         raise HTTPException(
@@ -161,6 +162,8 @@ def reschedule_appointment(
     appointment_id: int,
     new_slot_start_time: datetime
 ):
+    new_slot_start_time = new_slot_start_time.replace(
+        microsecond=0, tzinfo=timezone.utc)
     
     query = select(Appointment).where(
         Appointment.id == appointment_id
@@ -181,7 +184,7 @@ def reschedule_appointment(
             detail = "only confirmed appointments can be rescheduled"
         )
         
-    min_booking_time = datetime.now() + timedelta(hours=1)
+    min_booking_time = datetime.now(timezone.utc) + timedelta(hours=1)
 
     if new_slot_start_time < min_booking_time:
         raise HTTPException(

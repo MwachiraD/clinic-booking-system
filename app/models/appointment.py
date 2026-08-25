@@ -9,7 +9,7 @@ class Appointment(Base):
     id = Column(Integer, primary_key=True)
     doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable= False)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable= False)
-    slot_start_time = Column(DateTime, nullable=False)
+    slot_start_time = Column(DateTime(timezone=True), nullable=False)
     status = Column(String, nullable=False)
     cancellation_reason = Column(String, nullable=True)
     doctor = relationship("Doctor" , back_populates = "appointments")
