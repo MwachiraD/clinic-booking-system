@@ -53,10 +53,12 @@ def test_successful_booking(client, db_session):
 
     slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
-
+    print("appointment_date:", appointment_date)
+    print("slot:", slot)
+    print("slot tzinfo:", slot.tzinfo)
     response = client.post(
         "/appointments",
         json={
@@ -65,7 +67,7 @@ def test_successful_booking(client, db_session):
             "slot_start_time": slot.isoformat().replace("+00:00", "Z")
         }
     )
-
+    print(response.json())
     assert response.status_code == 200
 
     data = response.json()
@@ -81,7 +83,7 @@ def test_doctor_not_found(client):
 
     slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
@@ -108,7 +110,7 @@ def test_patient_not_found(client, db_session):
 
     slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
@@ -195,7 +197,7 @@ def test_double_booking(client, db_session):
 
     slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
@@ -207,7 +209,7 @@ def test_double_booking(client, db_session):
             "slot_start_time": slot.isoformat().replace("+00:00", "Z")
         }
     )
-
+    print(first_response.json())
     assert first_response.status_code == 200
 
     second_response = client.post(
@@ -233,7 +235,7 @@ def test_cancel_appointment(client, db_session):
 
     slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
@@ -254,7 +256,7 @@ def test_cancel_appointment(client, db_session):
             "cancellation_reason": "Patient requested cancellation"
         }
     )
-
+    print(response.json())
     assert response.status_code == 200
 
     data = response.json()
@@ -274,7 +276,7 @@ def test_cancel_already_cancelled_appointment(client, db_session):
 
     slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
@@ -317,13 +319,13 @@ def test_reschedule_appointment(client, db_session):
 
     original_slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
     new_slot = datetime.combine(
         appointment_date,
-        time(15, 0),
+        time(13, 0),
         tzinfo=timezone.utc
     )
 
@@ -344,7 +346,7 @@ def test_reschedule_appointment(client, db_session):
             "slot_start_time": new_slot.isoformat().replace("+00:00", "Z")
         }
     )
-
+    print(response.json())
     assert response.status_code == 200
 
     data = response.json()
@@ -363,7 +365,7 @@ def test_reschedule_cancelled_appointment(client, db_session):
 
     original_slot = datetime.combine(
         appointment_date,
-        time(14, 0),
+        time(11, 0),
         tzinfo=timezone.utc
     )
 
@@ -399,3 +401,42 @@ def test_reschedule_cancelled_appointment(client, db_session):
     )
 
     assert response.status_code == 400
+
+
+def test_booking_converts_timezone_to_utc(client, db_session):
+
+    appointment_date = future_date()
+
+    doctor, patient = create_doctor_and_patient(
+        db_session,
+        appointment_date
+    )
+
+    # 09:00 Nairobi time = 06:00 UTC
+    slot = datetime.combine(
+        appointment_date,
+        time(9, 0),
+        tzinfo=timezone(timedelta(hours=3))
+    )
+
+    response = client.post(
+        "/appointments",
+        json={
+            "doctor_id": doctor.id,
+            "patient_id": patient.id,
+            "slot_start_time": slot.isoformat()
+        }
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    stored_time = datetime.fromisoformat(
+        data["slot_start_time"]
+    )
+
+    assert stored_time == datetime.combine(
+        appointment_date,
+        time(6, 0)
+    )

@@ -5,16 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.models.working_hours import WorkingHours
 from app.models.appointment import Appointment
-
+from zoneinfo import ZoneInfo
+NAIROBI = ZoneInfo("Africa/Nairobi")
 
 def generate_slots(day: date, start_time: time, end_time: time):
     slots = []
 
-    current = datetime.combine(day, start_time, tzinfo=timezone.utc)
-    end_datetime = datetime.combine(day, end_time, tzinfo=timezone.utc)
+    current = datetime.combine(day, start_time, tzinfo=NAIROBI)
+    end_datetime = datetime.combine(day, end_time, tzinfo=NAIROBI)
 
     while current + timedelta(minutes=30) <= end_datetime:
-        slots.append(current)
+        slots.append(current.astimezone(timezone.utc))
         current += timedelta(minutes=30)
 
     return slots
@@ -73,6 +74,12 @@ def get_active_appointments(
     result = db.execute(query)
 
     appointments = result.scalars().all()
+    for appointment in appointments:
+        if appointment.slot_start_time.tzinfo is None:
+            appointment.slot_start_time = appointment.slot_start_time.replace(
+                tzinfo=timezone.utc
+            )
+
 
     return appointments
 

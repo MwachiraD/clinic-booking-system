@@ -20,7 +20,12 @@ def book_appointment(
     patient_id: int,
     slot_start_time: datetime,
 ):
-    slot_start_time = slot_start_time.replace(microsecond=0, tzinfo=timezone.utc)
+    if slot_start_time.tzinfo is None:
+        slot_start_time = slot_start_time.replace(tzinfo=timezone.utc)  
+    else:
+        slot_start_time = slot_start_time.astimezone(timezone.utc)
+
+    slot_start_time = slot_start_time.replace(microsecond=0)
     # 1. Check that the doctor exists
     query = select(Doctor).where(
         Doctor.id == doctor_id
@@ -70,6 +75,10 @@ def book_appointment(
         slot_start_time.date(),
         working_hours
     )
+
+    print("REQUESTED:", slot_start_time)
+    print("WORKING HOURS:", working_hours)
+    print("VALID SLOTS:", valid_slots)
 
     # 6. Make sure the requested time is a valid slot
     if slot_start_time not in valid_slots:
@@ -162,8 +171,12 @@ def reschedule_appointment(
     appointment_id: int,
     new_slot_start_time: datetime
 ):
-    new_slot_start_time = new_slot_start_time.replace(
-        microsecond=0, tzinfo=timezone.utc)
+    if new_slot_start_time.tzinfo is None:
+        new_slot_start_time = new_slot_start_time.replace(tzinfo=timezone.utc)
+    else:
+        new_slot_start_time = new_slot_start_time.astimezone(timezone.utc)
+
+    new_slot_start_time = new_slot_start_time.replace(microsecond=0)
     
     query = select(Appointment).where(
         Appointment.id == appointment_id
