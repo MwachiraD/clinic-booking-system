@@ -24,5 +24,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check database environment
+        run: echo "DATABASE_URL is set: ${{ env.DATABASE_URL != '' }}"
+
       - name: Run tests
-        run: pytest -v 
+        run: pytest -v
