@@ -233,7 +233,7 @@ alembic upgrade head
 
 Seed the database:
 ```bash
-python -m scripts.seed
+python scripts/seed.py
 ```
 
 Start the API:
@@ -356,20 +356,29 @@ Render deployment is working successfully from the `main` branch.
 ## Section 4: AI Reflection
 
 AI tools were used throughout the assessment as a development and learning
-aid. I remained responsible for reviewing the generated suggestions,
-testing the implementation, and making the final architectural decisions.
+aid. I remained responsible for reviewing suggestions, integrating the
+code, running the application, testing the API behaviour, debugging
+errors, and making the final implementation decisions.
 
 **1. What did you use AI for across the four sections?**
 
+AI was used for:
+
 - Discussing and refining the system design and database models.
 - Explaining FastAPI, SQLAlchemy and dependency injection concepts.
-- Helping identify validation rules and edge cases.
+- Identifying validation rules and potential edge cases.
 - Reviewing implementation approaches for booking, cancellation and
   rescheduling.
-- Generating an initial structure for automated pytest tests.
-- Troubleshooting test failures and API errors.
+- Providing examples and initial structure for some implementation code.
+- Providing an initial structure for the automated test suite.
+- Troubleshooting API errors using stack traces and observed behaviour.
 - Explaining Docker and GitHub Actions concepts while setting up deployment.
 - Reviewing the README and deployment configuration.
+
+Some implementation code, including parts of the planned automated test
+suite, was adapted from AI-generated suggestions. I reviewed and
+integrated this code rather than treating the generated output as
+automatically correct.
 
 **2. One example where an AI suggestion improved your work**
 
