@@ -22,5 +22,6 @@ class Appointment(Base):
             "slot_start_time",
             unique=True,
             postgresql_where=(status == "confirmed"),
+            sqlite_where=(status == "confirmed"),
         ),
     )

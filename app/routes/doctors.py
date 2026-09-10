@@ -1,9 +1,11 @@
 from datetime import date , datetime, time, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.doctor import Doctor
 from app.schemas.availability_response import AvailabilityResponse
 from app.services.availability import (
     get_working_hours,
@@ -22,6 +24,11 @@ def get_doctor_availability(
     day: date,
     db: Session = Depends(get_db)
 ):
+    doctor = db.scalar(select(Doctor).where(Doctor.id == doctor_id))
+
+    if doctor is None:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
     working_hours = get_working_hours(db=db, doctor_id=doctor_id, day=day)
     daily_slots = generate_daily_slots(day, working_hours)
     active_appointments = get_active_appointments(db=db, doctor_id=doctor_id, day=day)

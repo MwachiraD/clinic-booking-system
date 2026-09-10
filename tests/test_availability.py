@@ -77,3 +77,15 @@ def test_booked_slot_not_available(client, db_session):
     data = response.json()
 
     assert "11:00:00" not in data["available_slots"]
+
+
+def test_availability_doctor_not_found(client):
+
+    appointment_date = future_date()
+
+    response = client.get(
+        "/doctors/9999/availability",
+        params={"day": appointment_date.isoformat()}
+    )
+
+    assert response.status_code == 404

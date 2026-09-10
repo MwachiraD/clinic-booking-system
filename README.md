@@ -440,8 +440,6 @@ script just to silence the error.
 
 * **Timezone display:** The API returns availability slot times in UTC. A frontend or API client is responsible for converting these times to the user's local timezone for display.
 
-* **Database concurrency:** The application checks slot availability before creating an appointment. For a high-concurrency production system, a stronger database-level constraint or transaction/locking strategy would be required to guarantee that two simultaneous requests cannot book the same slot.
-
 * **Authentication and authorization:** The current API does not implement a full authentication and authorization system. In a production deployment, patients, doctors, and administrators would require authenticated access with role-based permissions.
 
 * **Notifications:** The system does not currently send email or SMS notifications for bookings, cancellations, or rescheduling.

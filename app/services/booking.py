@@ -76,10 +76,6 @@ def book_appointment(
         working_hours
     )
 
-    print("REQUESTED:", slot_start_time)
-    print("WORKING HOURS:", working_hours)
-    print("VALID SLOTS:", valid_slots)
-
     # 6. Make sure the requested time is a valid slot
     if slot_start_time not in valid_slots:
         raise HTTPException(

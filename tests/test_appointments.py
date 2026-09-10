@@ -265,6 +265,61 @@ def test_cancel_appointment(client, db_session):
     assert data["cancellation_reason"] == "Patient requested cancellation"
 
 
+def test_cancelled_slot_becomes_bookable(client, db_session):
+
+    appointment_date = future_date()
+
+    doctor, patient = create_doctor_and_patient(
+        db_session,
+        appointment_date
+    )
+
+    another_patient = Patient(
+        name="Another Patient",
+        email="another@example.com",
+        phone_number="0700000000"
+    )
+    db_session.add(another_patient)
+    db_session.commit()
+    db_session.refresh(another_patient)
+
+    slot = datetime.combine(
+        appointment_date,
+        time(11, 0),
+        tzinfo=timezone.utc
+    )
+
+    booking_response = client.post(
+        "/appointments",
+        json={
+            "doctor_id": doctor.id,
+            "patient_id": patient.id,
+            "slot_start_time": slot.isoformat().replace("+00:00", "Z")
+        }
+    )
+    appointment_id = booking_response.json()["id"]
+
+    cancellation_response = client.patch(
+        f"/appointments/{appointment_id}/cancel",
+        json={
+            "cancellation_reason": "Patient requested cancellation"
+        }
+    )
+    assert cancellation_response.status_code == 200
+
+    rebooking_response = client.post(
+        "/appointments",
+        json={
+            "doctor_id": doctor.id,
+            "patient_id": another_patient.id,
+            "slot_start_time": slot.isoformat().replace("+00:00", "Z")
+        }
+    )
+
+    assert rebooking_response.status_code == 200
+    assert rebooking_response.json()["status"] == "confirmed"
+
+
 def test_cancel_already_cancelled_appointment(client, db_session):
 
     appointment_date = future_date()
