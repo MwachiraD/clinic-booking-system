@@ -76,7 +76,8 @@ def test_booked_slot_not_available(client, db_session):
 
     data = response.json()
 
-    assert "11:00:00" not in data["available_slots"]
+    # The booked 11:00 UTC slot is displayed as 14:00 in Nairobi time.
+    assert "14:00:00" not in data["available_slots"]
 
 
 def test_availability_doctor_not_found(client):

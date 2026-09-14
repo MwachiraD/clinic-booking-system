@@ -5,9 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.appointment import Appointment
-from app.models.doctor import Doctor
-from app.models.patient import Patient
+from app.models import Appointment , Patient, Doctor
+
 from app.services.availability import (
     get_working_hours,
     generate_daily_slots,
@@ -20,13 +19,15 @@ def book_appointment(
     patient_id: int,
     slot_start_time: datetime,
 ):
+    # Store and compare appointment instants consistently, regardless of the
+    # timezone offset supplied by the API client.
     if slot_start_time.tzinfo is None:
         slot_start_time = slot_start_time.replace(tzinfo=timezone.utc)  
     else:
         slot_start_time = slot_start_time.astimezone(timezone.utc)
 
     slot_start_time = slot_start_time.replace(microsecond=0)
-    # 1. Check that the doctor exists
+
     query = select(Doctor).where(
         Doctor.id == doctor_id
     )
@@ -54,7 +55,6 @@ def book_appointment(
             detail="Patient not found"
         )
 
-    # 3. Check the one-hour booking rule
     min_booking_time = datetime.now(timezone.utc) + timedelta(hours=1)
 
     if slot_start_time < min_booking_time:
@@ -63,27 +63,27 @@ def book_appointment(
             detail="Appointments must be booked at least 1 hour in advance"
         )
 
-    # 4. Get the doctor's working hours for that day
+    # Valid slots are derived from the doctor's recurring working hours rather
+    # than stored independently, so schedule changes cannot leave stale slots.
     working_hours = get_working_hours(
         db,
         doctor_id,
         slot_start_time.date()
     )
 
-    # 5. Generate the valid 30-minute slots
     valid_slots = generate_daily_slots(
         slot_start_time.date(),
         working_hours
     )
 
-    # 6. Make sure the requested time is a valid slot
     if slot_start_time not in valid_slots:
         raise HTTPException(
             status_code=400,
             detail="Slot is not within the doctor's working hours"
         )
 
-    # 7. Check whether the slot is already booked
+    # This pre-check returns a clear error in the common case. The partial
+    # unique index remains the authoritative protection if requests race.
     query = select(Appointment).where(
         Appointment.doctor_id == doctor_id,
         Appointment.slot_start_time == slot_start_time,
@@ -99,7 +99,6 @@ def book_appointment(
             detail="Requested slot is already booked"
         )
 
-    # 8. Create the appointment
     appointment = Appointment(
         doctor_id=doctor_id,
         patient_id=patient_id,
@@ -107,10 +106,8 @@ def book_appointment(
         status="confirmed"
     )
 
-    # 9. Add it to the database session
     db.add(appointment)
 
-    # 10. Commit the transaction
     try:
         db.commit()
     except IntegrityError:
@@ -121,10 +118,8 @@ def book_appointment(
             detail="This slot is no longer available"
         )
 
-    # 11. Get database-generated values such as the ID
     db.refresh(appointment)
 
-    # 12. Return the appointment
     return appointment
 
 
@@ -233,7 +228,9 @@ def reschedule_appointment(
             status_code = 409, 
             detail = "The slot is already booked. Please choose another time"
         )
-            
+
+    # The appointment is updated only after the new slot has passed every
+    # validation check, so a failed reschedule leaves the original slot intact.
     appointment.slot_start_time = new_slot_start_time
     
     try:

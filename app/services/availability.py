@@ -3,14 +3,15 @@ from datetime import date, time, datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.working_hours import WorkingHours
-from app.models.appointment import Appointment
+from app.models import WorkingHours, Appointment
 from zoneinfo import ZoneInfo
 NAIROBI = ZoneInfo("Africa/Nairobi")
 
 def generate_slots(day: date, start_time: time, end_time: time):
     slots = []
 
+    # Working hours are configured in Nairobi time. Slots are converted to UTC
+    # so they can be compared consistently with stored appointment instants.
     current = datetime.combine(day, start_time, tzinfo=NAIROBI)
     end_datetime = datetime.combine(day, end_time, tzinfo=NAIROBI)
 

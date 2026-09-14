@@ -15,6 +15,8 @@ class Appointment(Base):
     doctor = relationship("Doctor" , back_populates = "appointments")
     patient = relationship( "Patient" , back_populates = "appointments")
     
+    # Only confirmed appointments occupy a slot. The partial unique index is
+    # the database-level safeguard against two concurrent booking requests.
     __table_args__ = (
         Index(
             "uq_active_doctor_slot",

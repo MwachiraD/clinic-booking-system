@@ -8,10 +8,8 @@ from app.main import app
 from app.database import Base, get_db
 
 # Import all models so SQLAlchemy registers every table
-from app.models.doctor import Doctor
-from app.models.patient import Patient
-from app.models.appointment import Appointment
-from app.models.working_hours import WorkingHours
+from app.models import Doctor, Appointment, WorkingHours, Patient
+
 
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
@@ -30,6 +28,7 @@ TestingSessionLocal = sessionmaker(
 
 @pytest.fixture
 def db_session():
+    # A fresh schema for each test prevents state leaking between scenarios.
     Base.metadata.create_all(bind=engine)
 
     db = TestingSessionLocal()
@@ -46,6 +45,8 @@ def client(db_session):
     def override_get_db():
         yield db_session
 
+    # Test requests use the isolated SQLite session instead of the configured
+    # application database.
     app.dependency_overrides[get_db] = override_get_db
 
     with TestClient(app) as test_client:

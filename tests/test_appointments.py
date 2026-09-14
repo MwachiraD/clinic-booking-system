@@ -57,8 +57,7 @@ def test_successful_booking(client, db_session):
         tzinfo=timezone.utc
     )
     print("appointment_date:", appointment_date)
-    print("slot:", slot)
-    print("slot tzinfo:", slot.tzinfo)
+   
     response = client.post(
         "/appointments",
         json={
@@ -307,6 +306,8 @@ def test_cancelled_slot_becomes_bookable(client, db_session):
     )
     assert cancellation_response.status_code == 200
 
+    # Cancellation changes the appointment's status instead of deleting it;
+    # the partial unique index must therefore permit this same slot to be used.
     rebooking_response = client.post(
         "/appointments",
         json={

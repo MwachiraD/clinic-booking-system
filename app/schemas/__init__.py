@@ -1,0 +1,5 @@
+from app.schemas.appointment_cancel import AppointmentCancel
+from app.schemas.appointment_create import AppointmentCreate
+from app.schemas.appointment_reschedule import AppointmentReschedule
+from app.schemas.appointment_response import AppointmentResponse
+from app.schemas.availability_response import AvailabilityResponse

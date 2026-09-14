@@ -1,4 +1,5 @@
-from datetime import date , datetime, time, timedelta, timezone
+from datetime import date
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -7,11 +8,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.doctor import Doctor
 from app.schemas.availability_response import AvailabilityResponse
-from app.services.availability import (
-    get_working_hours,
-    generate_daily_slots,
-    get_active_appointments,
-)
+from app.services.availability import get_available_slots
+
+NAIROBI = ZoneInfo("Africa/Nairobi")
 
 router = APIRouter()
 
@@ -28,16 +27,8 @@ def get_doctor_availability(
 
     if doctor is None:
         raise HTTPException(status_code=404, detail="Doctor not found")
-
-    working_hours = get_working_hours(db=db, doctor_id=doctor_id, day=day)
-    daily_slots = generate_daily_slots(day, working_hours)
-    active_appointments = get_active_appointments(db=db, doctor_id=doctor_id, day=day)
-
-    booked_slots = {appointment.slot_start_time for appointment in active_appointments}
-    min_booking_time = datetime.now(timezone.utc) + timedelta(hours=1)
-    available_slots = [
-        slot for slot in daily_slots if slot not in booked_slots and slot >= min_booking_time]
-    available_times= [slot.time() for slot in available_slots]
+    available_slots = get_available_slots(db=db, doctor_id=doctor_id, day=day)
+    available_times = [slot.astimezone(NAIROBI).time() for slot in available_slots]
 
     return AvailabilityResponse(
         doctor_id=doctor_id,

@@ -1,13 +1,10 @@
-from datetime import datetime
+
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.appointment_cancel import AppointmentCancel
-from app.schemas.appointment_create import AppointmentCreate
-from app.schemas.appointment_reschedule import AppointmentReschedule
-from app.schemas.appointment_response import AppointmentResponse
+from app.schemas import AppointmentCancel, AppointmentResponse, AppointmentReschedule, AppointmentCreate
 from app.services.booking import book_appointment, cancel_appointment, reschedule_appointment
 
 

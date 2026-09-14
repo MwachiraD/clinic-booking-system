@@ -91,7 +91,7 @@ For example:
 * 09:30 Nairobi → 06:30 UTC
 * 16:30 Nairobi → 13:30 UTC
 
-The availability endpoint currently returns slot times as UTC `time` values. Clients consuming the API should interpret these times as UTC and convert them to the user's local timezone for display.
+The availability endpoint returns slot times in Nairobi local time as `time` values. Clients in another timezone can convert them for display.
 
 ### Scope decisions
 
@@ -264,7 +264,7 @@ pytest -v
 
 Current test result:
 ```
-15 passed
+17 passed
 ```
 
 The tests cover scenarios including:
@@ -438,7 +438,7 @@ script just to silence the error.
 
 ## Known Limitations
 
-* **Timezone display:** The API returns availability slot times in UTC. A frontend or API client is responsible for converting these times to the user's local timezone for display.
+* **Timezone display:** The API returns availability slot times in Nairobi local time. A frontend or API client may convert them when displaying appointments in another timezone.
 
 * **Authentication and authorization:** The current API does not implement a full authentication and authorization system. In a production deployment, patients, doctors, and administrators would require authenticated access with role-based permissions.
 
@@ -446,7 +446,7 @@ script just to silence the error.
 
 * **Recurring working hours:** Working hours are stored per day rather than through a dedicated recurring schedule management system. Changes to a doctor's regular schedule would therefore require updating the relevant records.
 
-* **Availability response format:** Availability currently returns `time` values rather than full timezone-aware datetime values. Clients must know that these values represent UTC.
+* **Availability response format:** Availability currently returns `time` values rather than full timezone-aware datetime values. Clients must interpret them as Nairobi local time for the requested date.
 
 * **Production database:** The automated test suite uses an isolated test database. Production deployments should use PostgreSQL with appropriate backups, monitoring, and connection management.
 
